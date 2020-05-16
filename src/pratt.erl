@@ -99,7 +99,7 @@ expr_postfix_infix([{op, Op} | Tail] = Tokens, LeftExpr, MinBP) ->
   {Action, Result} =
     case {postfix_binding_power(Op), infix_binding_power(Op)} of
       {LeftBP, _} when LeftBP =/= nil, LeftBP >= MinBP ->
-        {continue, expr_postfix(Op, LeftExpr, Tail)};
+        {continue, expr_postfix(Tail, Op, LeftExpr)};
       {_, {LeftBP, RightBP}} when LeftBP =/= nil, LeftBP >= MinBP ->
         RightResult = expr_bp(Tail, RightBP),
         {continue, expr_infix_wrapped(Op, LeftExpr, RightResult, RightBP)};
@@ -120,12 +120,12 @@ expr_postfix_infix([Head | _Tail], _LeftExpr, _MinBP) ->
 
 %% Call expr_infix when RightExpr parsing succeeds.
 expr_infix_wrapped(Op, LeftExpr, {ok, RightExpr, Tokens}, RightBP) ->
-  expr_infix(Op, LeftExpr, RightExpr, Tokens, RightBP);
-expr_infix_wrapped(_Op, _LeftExpr, {error, _} = Error, _RightBP) ->
+  expr_infix(Tokens, Op, LeftExpr, RightExpr, RightBP);
+expr_infix_wrapped({error, _} = Error, _Op, _LeftExpr, _RightBP) ->
   Error.
 
 %% Parse expressions that need the previous expression.
-expr_postfix('[', LeftExpr, Tokens) ->
+expr_postfix(Tokens, '[', LeftExpr) ->
   % Ensure a closing bracket after expression.
   case expr_bp(Tokens, 0) of
     {ok, Expr, [{op, ']'} | Tail]} ->
@@ -135,20 +135,20 @@ expr_postfix('[', LeftExpr, Tokens) ->
     {error, _} = Error ->
       Error
   end;
-expr_postfix(Op, LeftExpr, Tokens) ->
+expr_postfix(Tokens, Op, LeftExpr) ->
   {ok, {cons, Op, [LeftExpr]}, Tokens}.
 
 %% Parse expressions that need both the previous and next expressions.
-expr_infix('?', LeftExpr, MiddleExpr, [{op, ':'} | Tail], RightBP) ->
+expr_infix([{op, ':'} | Tail], '?', LeftExpr, MiddleExpr, RightBP) ->
   case expr_bp(Tail, RightBP) of
     {ok, RightExpr, Tokens} ->
       {ok, {cons, '?', [LeftExpr, MiddleExpr, RightExpr]}, Tokens};
     {error, _} = Error ->
       Error
   end;
-expr_infix('?', _LeftExpr, _MiddleExpr, [Head | _], _RightBP) ->
+expr_infix([Head | _], '?', _LeftExpr, _MiddleExpr, _RightBP) ->
   build_error("unexpected token '~s', expected ':'", [Head]);
-expr_infix(Op, LeftExpr, RightExpr, Tokens, _RightBP) ->
+expr_infix(Tokens, Op, LeftExpr, RightExpr, _RightBP) ->
   {ok, {cons, Op, [LeftExpr, RightExpr]}, Tokens}.
 
 %% Binding power of prefix operators (applies to the right).
